@@ -28,14 +28,32 @@ producing real splits without any edits:
 ## Cutting a release
 
 ```bash
-./toolchain/release.sh                    # next patch version, publish to GitHub
+./toolchain/release.sh                    # next patch version, build, stage, publish
 ./toolchain/release.sh --version 1.2.0    # explicit version
-./toolchain/release.sh --draft            # build, upload, but keep it unpublished
-./toolchain/release.sh --no-publish       # just build into dist/release/<version>
+./toolchain/release.sh --no-bump          # rebuild the current version
+./toolchain/release.sh --no-publish       # stop after staging into releases/<version>
 ```
 
 The script bumps `versionName` and `versionCode` in both build paths, builds a signed APK, writes
-`SHA256SUMS` and release notes, then creates a GitHub release with `gh release create`.
+`SHA256SUMS` and `NOTES.md`, copies them into `releases/<version>/` and creates the GitHub release.
+
+**Commit `releases/<version>/` and push the tag** — the release page gets its files from the tree:
+
+```bash
+git add releases/1.0.1 && git commit -m "Release 1.0.1" && git push
+git tag v1.0.1 && git push origin v1.0.1      # triggers .github/workflows/release.yml
+```
+
+The workflow checks `SHA256SUMS` and attaches the APK to the release. Keeping the binary in the
+repository is deliberate: the published file and the committed one are the same bytes, so anyone can
+verify the checksum without trusting a build machine.
+
+If a release was created without its files (an upload can fail on a restricted network), re-run the
+workflow from the Actions tab, or dispatch it:
+
+```bash
+gh workflow run release.yml -f tag=v1.0.1
+```
 
 ## Signing
 

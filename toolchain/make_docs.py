@@ -222,8 +222,8 @@ def draw_key(image: Image.Image, rect, look: Look, pressed=False, accent=False, 
         return
 
     if pressed:
-        top = on(look.key_top, WHITE if look.dark else BLACK, 0.085 if look.dark else 0.055)
-        bottom = on(look.key_bottom, WHITE if look.dark else BLACK, 0.065 if look.dark else 0.075)
+        top = on(look.key_top, WHITE if look.dark else BLACK, 0.135 if look.dark else 0.055)
+        bottom = on(look.key_bottom, WHITE if look.dark else BLACK, 0.10 if look.dark else 0.075)
     else:
         top, bottom = look.key_top, look.key_bottom
     rounded_vertical_gradient(image, (x0, y0, x1, y1), radius, top, bottom)
@@ -312,7 +312,13 @@ def render_frame(look: Look, typed: str, pressed: str | None, press_progress: fl
         bx0 = max(8, min(width - bw - 8, cx - bw / 2))
         by0 = max(board_top - 74, rect[1] - bh - 12)
         shadow = Image.new("RGBA", image.size, (0, 0, 0, 0))
-        ImageDraw.Draw(shadow).rounded_rectangle([bx0, by0 + 5, bx0 + bw, by0 + bh + 5], radius=16, fill=(0, 0, 0, 56))
+        sd = ImageDraw.Draw(shadow)
+        for step in range(6, 0, -1):
+            sd.rounded_rectangle(
+                [bx0 - step * 0.6, by0 + 3 + step * 0.7, bx0 + bw + step * 0.6, by0 + bh + 3 + step * 0.7],
+                radius=16 + step,
+                fill=(0, 0, 0, 18),
+            )
         image = Image.alpha_composite(image, shadow)
         rounded_vertical_gradient(image, (bx0, by0, bx0 + bw, by0 + bh), 16, on(look.key_top, WHITE, 0.05), on(look.key_bottom, WHITE, 0.05))
         draw = ImageDraw.Draw(image)
