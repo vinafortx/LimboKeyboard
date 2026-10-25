@@ -1,0 +1,23 @@
+# Gradle / Android Studio
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Manual toolchain output
+toolchain/.work/
+toolchain/.keys/
+toolchain/.cache/
+dist/
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# OS noise
+.DS_Store
+Thumbs.db
