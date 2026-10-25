@@ -195,6 +195,7 @@ sign() {  # sign <in> <out>
     --v2-signing-enabled true --v3-signing-enabled true \
     --out "$2" "$1"
   "$APKSIGNER" verify --min-sdk-version "$MIN_SDK" "$2" >/dev/null
+  rm -f "$2.idsig"  # v4 signature sidecar; the release ships v2/v3 only
 }
 
 OUT="$DIST/Limbo-$BUILD_TYPE.apk"

@@ -21,3 +21,7 @@ dist/
 # OS noise
 .DS_Store
 Thumbs.db
+
+# Release binaries are committed on purpose: they are what the release page serves, and keeping
+# them in the tree makes the published checksum reproducible. See .github/workflows/release.yml.
+!releases/**/*.apk

@@ -134,7 +134,18 @@ Requires Android 8.0 (API 26) or newer. Install with \`adb install -r <file>.apk
 EOF
 fi
 
+# Stage the files that the release page serves. They are committed on purpose: the workflow in
+# .github/workflows/release.yml only uploads what is already in the tree, so the published checksum
+# always matches a file anyone can inspect.
+STAGE="$ROOT/releases/$VERSION"
+mkdir -p "$STAGE"
+rm -f "$STAGE"/*.apk "$STAGE"/SHA256SUMS
+cp "${FILES[@]}" "$STAGE"/
+cp "$RELEASE_DIR/NOTES.md" "$STAGE/NOTES.md"
+( cd "$STAGE" && sha256sum ./*.apk > SHA256SUMS )
+
 ok "Artefacts ready in dist/release/$VERSION"
+ok "Staged releases/$VERSION — commit it before publishing"
 
 if [[ "$PUBLISH" != "1" ]]; then
   exit 0
@@ -144,11 +155,28 @@ command -v gh >/dev/null || fail "gh is not installed; use --no-publish or insta
 
 TAG="v$VERSION"
 TITLE="Limbo Keyboard $VERSION"
-ARGS=("$TAG" --title "$TITLE" --notes-file "$RELEASE_DIR/NOTES.md")
+if [[ -z "$(git status --porcelain -- "releases/$VERSION")" ]]; then
+  :
+else
+  fail "releases/$VERSION has uncommitted changes — commit and push it first"
+fi
+if [[ -n "$TARGET" ]]; then
+  git rev-parse --verify "$TARGET" >/dev/null || fail "Unknown target $TARGET"
+fi
+
+ARGS=("$TAG" --title "$TITLE" --notes-file "$STAGE/NOTES.md")
 if [[ -n "$TARGET" ]]; then ARGS+=(--target "$TARGET"); fi
 if [[ "$DRAFT" == "1" ]]; then ARGS+=(--draft); fi
-ARGS+=("${FILES[@]}" "$RELEASE_DIR/SHA256SUMS")
 
-log "Publishing GitHub release $TAG"
-gh release create "${ARGS[@]}"
+log "Creating GitHub release $TAG"
+gh release create "${ARGS[@]}" || fail "Could not create the release"
+
+# Asset uploads go through uploads.github.com, which some sandboxes block. Pushing the tag through
+# git is what makes GitHub run the workflow that attaches the files, so nudge it explicitly.
+log "Asking the release workflow to attach the APK"
+if gh workflow run release.yml -f tag="$TAG" >/dev/null 2>&1; then
+  ok "Workflow started — check it with: gh run list --workflow=release.yml"
+else
+  warn "Could not dispatch the workflow; run it manually: gh workflow run release.yml -f tag=$TAG"
+fi
 ok "Released $TAG"

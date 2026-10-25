@@ -1,31 +1,60 @@
 name: Release
 
-# Builds both ways and attaches the signed APKs to a GitHub release.
+# Publishes the signed APK that lives in releases/<version>/ as a GitHub release asset.
 #
-# Trigger it by pushing a tag (v1.0.1) or manually from the Actions tab. The version is taken from
-# app/build.gradle.kts unless workflow_dispatch supplies one.
+# Why the APK is committed: the build is fully reproducible offline, but a binary attached to a
+# release is what people actually download, and keeping it in the repository means the file on the
+# release page is byte-for-byte the one whose checksum is next to it. `toolchain/release.sh`
+# produces and stages it; this workflow only attaches what is already in the tree.
 #
-# Signing secrets (optional):
-#   KEYSTORE_BASE64, STORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD
-# Without them the build still succeeds and is signed with a throwaway preview key — useful for a
-# first look, not for updating an already published app.
+# Trigger it by pushing a tag (v1.1.0) or from the Actions tab.
 
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Version to publish, e.g. 1.0.1 (leave empty to read from build.gradle.kts)'
-        required: false
+      tag:
+        description: 'Release tag to publish, e.g. v1.0.0'
+        required: true
 
 permissions:
   contents: write
 
 jobs:
-  bundle:
-    name: Gradle · signed APK + App Bundle
+  publish:
+    name: Attach APK to the release
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          TAG="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          [[ -n "$TAG" ]] || { echo "No tag"; exit 1; }
+          VERSION="${TAG#v}"
+          DIR="releases/$VERSION"
+          [[ -d "$DIR" ]] || { echo "No artefacts in $DIR"; ls -R releases || true; exit 1; }
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+          ( cd "$DIR" && sha256sum -c SHA256SUMS )
+
+      - name: Attach artefacts
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Limbo Keyboard ${{ steps.version.outputs.version }}
+          files: |
+            releases/${{ steps.version.outputs.version }}/*.apk
+            releases/${{ steps.version.outputs.version }}/SHA256SUMS
+          fail_on_unmatched_files: true
+
+  verify-build:
+    name: Gradle · assembleRelease (sanity)
+    runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -40,87 +69,5 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Decode keystore
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
-        run: |
-          mkdir -p toolchain/.keys
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > toolchain/.keys/limbo-release.jks
-          echo "LIMBO_KEYSTORE=$GITHUB_WORKSPACE/toolchain/.keys/limbo-release.jks" >> "$GITHUB_ENV"
-          echo "LIMBO_STORE_PASSWORD=${{ secrets.STORE_PASSWORD }}" >> "$GITHUB_ENV"
-          echo "LIMBO_KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> "$GITHUB_ENV"
-          echo "LIMBO_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> "$GITHUB_ENV"
-
       - name: Build
-        run: |
-          gradle assembleRelease --no-daemon --stacktrace
-          gradle bundleRelease --no-daemon --stacktrace
-
-      - name: Collect
-        id: collect
-        run: |
-          VERSION="$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts | head -1)"
-          [[ -n "${{ inputs.version }}" ]] && VERSION="${{ inputs.version }}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          mkdir -p dist/release
-          for f in app/build/outputs/apk/release/*.apk; do
-            cp "$f" "dist/release/Limbo-${VERSION}-universal.apk"
-          done
-          for f in app/build/outputs/bundle/release/*.aab; do
-            cp "$f" "dist/release/Limbo-${VERSION}.aab"
-          done
-          ( cd dist/release && sha256sum *.apk *.aab > SHA256SUMS )
-          ls -la dist/release
-
-      - name: Upload build artefacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: limbo-release
-          path: dist/release/*
-          if-no-files-found: error
-
-      - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.collect.outputs.version }}
-          name: Limbo Keyboard ${{ steps.collect.outputs.version }}
-          draft: false
-          generate_release_notes: true
-          files: |
-            dist/release/*.apk
-            dist/release/*.aab
-            dist/release/SHA256SUMS
-
-  manual:
-    name: Manual toolchain · aapt2 → kotlinc → d8
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: SDK packages
-        run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
-
-      - name: Kotlin compiler
-        run: |
-          curl -sSL -o kotlin.zip https://github.com/JetBrains/kotlin/releases/download/v2.0.21/kotlin-compiler-2.0.21.zip
-          unzip -q kotlin.zip -d "$HOME/kotlin"
-          echo "KOTLIN_HOME=$HOME/kotlin/kotlinc" >> "$GITHUB_ENV"
-          echo "$HOME/kotlin/kotlinc/bin" >> "$GITHUB_PATH"
-
-      - name: Build
-        run: ./toolchain/build.sh --release
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: limbo-manual-release-apk
-          path: dist/*.apk
-          if-no-files-found: error
+        run: gradle assembleRelease --no-daemon --stacktrace
