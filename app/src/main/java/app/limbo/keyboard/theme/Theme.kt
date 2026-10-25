@@ -7,11 +7,12 @@ import org.json.JSONObject
 
 /** How the keys themselves are painted. */
 enum class KeyStyle(val labelRu: String, val labelEn: String) {
-    GLASS("Стекло", "Glass"),
+    GLASS("Матовое", "Frosted"),
     SOFT("Мягкие", "Soft"),
     FILLED("Плотные", "Filled"),
     OUTLINE("Контур", "Outline"),
-    MINIMAL("Минимал", "Minimal")
+    MINIMAL("Минимал", "Minimal"),
+    CRYSTAL("Кристалл", "Crystal")
 }
 
 /** Where the suggestion strip sits. */
@@ -66,7 +67,10 @@ data class Theme(
     val sheen: Float,
     val fontScale: Float,
     val tracking: Float,
-    val barStyle: BarStyle = BarStyle.FLOATING
+    val barStyle: BarStyle = BarStyle.FLOATING,
+
+    /** How milky the glass reads, 0..1. Higher means softer and more opaque. */
+    val frost: Float = 0.55f
 ) {
     val isLight: Boolean get() = !dark
 
@@ -87,6 +91,33 @@ object ThemeFactory {
      * the result should read light or dark. Everything else is derived so the 30 presets stay
      * consistent instead of drifting into thirty different design languages.
      */
+    /** Re-derives a theme in the opposite light/dark mode, keeping the user's own geometry. */
+    fun recolor(theme: Theme, dark: Boolean): Theme {
+        val rebuilt = build(
+            id = theme.id,
+            name = theme.name,
+            wallTop = theme.wallTop,
+            wallBottom = theme.wallBottom,
+            accent = theme.accent,
+            dark = dark,
+            glow = theme.wallGlow,
+            style = theme.keyStyle,
+            corner = theme.corner,
+            keyCorner = theme.keyCorner,
+            keyHeight = theme.keyHeight,
+            gap = theme.gap,
+            shadow = theme.shadow,
+            sheen = theme.sheen,
+            bar = theme.barStyle
+        )
+        return rebuilt.copy(
+            fontScale = theme.fontScale,
+            tracking = theme.tracking,
+            keyStroke = theme.keyStroke,
+            frost = theme.frost
+        )
+    }
+
     fun build(
         id: String,
         name: String,
@@ -100,8 +131,8 @@ object ThemeFactory {
         keyCorner: Float = 13f,
         keyHeight: Float = 54f,
         gap: Float = 7f,
-        shadow: Float = 0.55f,
-        sheen: Float = 0.6f,
+        shadow: Float = 0.32f,
+        sheen: Float = 0.18f,
         bar: BarStyle = BarStyle.FLOATING
     ): Theme {
         val panelTop: Int
@@ -111,25 +142,31 @@ object ThemeFactory {
         val text: Int
         val secondary: Int
 
+        // Frosted glass is neutral: the sheet is a milky, almost flat surface and the colour
+        // of the wallpaper only faintly shows through. That keeps the interface calm instead of
+        // turning every key into a rainbow gradient.
+        val panelBase: Int
         if (dark) {
-            panelTop = Colors.mix(wallTop, Color.BLACK, 0.55f)
-            panelBottom = Colors.mix(wallBottom, Color.BLACK, 0.62f)
-            val keyBase = Colors.mix(wallTop, Color.WHITE, 0.16f)
-            keyTop = Colors.mix(keyBase, accent, 0.06f)
-            keyBottom = Colors.mix(wallBottom, Color.WHITE, 0.06f)
+            panelBase = Colors.mix(Colors.mix(wallTop, wallBottom, 0.35f), Color.BLACK, 0.74f)
+            panelTop = Colors.mix(panelBase, Color.WHITE, 0.05f)
+            panelBottom = Colors.mix(panelBase, Color.WHITE, 0.03f)
+            keyTop = Colors.mix(panelBase, Color.WHITE, 0.125f)
+            keyBottom = Colors.mix(panelBase, Color.WHITE, 0.105f)
             text = Colors.alpha(Color.WHITE, 0.97f)
-            secondary = Colors.alpha(Color.WHITE, 0.58f)
+            secondary = Colors.alpha(Color.WHITE, 0.56f)
         } else {
-            panelTop = Colors.mix(wallTop, Color.WHITE, 0.58f)
-            panelBottom = Colors.mix(wallBottom, Color.WHITE, 0.5f)
-            keyTop = Colors.mix(wallTop, Color.WHITE, 0.88f)
-            keyBottom = Colors.mix(wallBottom, Color.WHITE, 0.76f)
-            text = Colors.mix(wallBottom, Color.BLACK, 0.86f)
-            secondary = Colors.mix(wallBottom, Color.BLACK, 0.5f)
+            panelBase = Colors.mix(Colors.mix(wallTop, wallBottom, 0.35f), Color.WHITE, 0.55f)
+            panelTop = Colors.mix(panelBase, Color.BLACK, 0.055f)
+            panelBottom = Colors.mix(panelBase, Color.BLACK, 0.075f)
+            keyTop = Colors.mix(panelBase, Color.WHITE, 0.75f)
+            keyBottom = Colors.mix(panelBase, Color.WHITE, 0.66f)
+            text = Colors.mix(panelBase, Color.BLACK, 0.84f)
+            secondary = Colors.mix(panelBase, Color.BLACK, 0.48f)
         }
 
-        val pressedTop = if (dark) Colors.mix(keyTop, Color.BLACK, 0.18f) else Colors.mix(keyTop, Color.BLACK, 0.1f)
-        val pressedBottom = if (dark) Colors.mix(keyBottom, Color.BLACK, 0.22f) else Colors.mix(keyBottom, Color.BLACK, 0.14f)
+        // Pressing a key moves it towards the light, the way a translucent cap behaves.
+        val pressedTop = if (dark) Colors.mix(keyTop, Color.WHITE, 0.1f) else Colors.mix(keyTop, Color.BLACK, 0.07f)
+        val pressedBottom = if (dark) Colors.mix(keyBottom, Color.WHITE, 0.075f) else Colors.mix(keyBottom, Color.BLACK, 0.09f)
 
         return Theme(
             id = id,
@@ -137,10 +174,10 @@ object ThemeFactory {
             dark = dark,
             wallTop = wallTop,
             wallBottom = wallBottom,
-            wallGlow = glow ?: Colors.alpha(accent, if (dark) 0.5f else 0.34f),
+            wallGlow = glow ?: Colors.alpha(accent, if (dark) 0.26f else 0.18f),
             panelTop = panelTop,
             panelBottom = panelBottom,
-            panelBlur = 0.7f,
+            panelBlur = 0.86f,
             keyTop = keyTop,
             keyBottom = keyBottom,
             keyPressedTop = pressedTop,
@@ -160,7 +197,8 @@ object ThemeFactory {
             sheen = sheen,
             fontScale = 1f,
             tracking = 0.008f,
-            barStyle = bar
+            barStyle = bar,
+            frost = if (dark) 0.58f else 0.66f
         )
     }
 }
@@ -281,6 +319,7 @@ object ThemeCodec {
         put("fontScale", theme.fontScale.toDouble())
         put("tracking", theme.tracking.toDouble())
         put("barStyle", theme.barStyle.name)
+        put("frost", theme.frost.toDouble())
     }.toString()
 
     fun decode(json: String): Theme? = try {
@@ -322,7 +361,8 @@ object ThemeCodec {
             sheen = o.optDouble("sheen", fallback.sheen.toDouble()).toFloat(),
             fontScale = o.optDouble("fontScale", 1.0).toFloat(),
             tracking = o.optDouble("tracking", fallback.tracking.toDouble()).toFloat(),
-            barStyle = runCatching { BarStyle.valueOf(o.optString("barStyle", "FLOATING")) }.getOrDefault(BarStyle.FLOATING)
+            barStyle = runCatching { BarStyle.valueOf(o.optString("barStyle", "FLOATING")) }.getOrDefault(BarStyle.FLOATING),
+            frost = o.optDouble("frost", fallback.frost.toDouble()).toFloat()
         )
     } catch (_: Throwable) {
         null

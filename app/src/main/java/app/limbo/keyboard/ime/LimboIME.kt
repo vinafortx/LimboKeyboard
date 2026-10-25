@@ -116,6 +116,9 @@ class LimboIME : InputMethodService() {
         suggestionStrip.onOpenClipboard = { showClipboard() }
 
         window?.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+        // On Android 12+ the sheet asks the system for a real blur of the app behind it. When the
+        // platform declines, the drawn frost is what the user sees — no visual difference in layout.
+        app.limbo.keyboard.ui.kit.Blur.enableBehind(window?.window, this, 22f)
 
         limbo.clipboard.addListener(clipListener)
         return frame

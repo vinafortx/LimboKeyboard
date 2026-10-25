@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+#
+# Cuts a Limbo Keyboard release.
+#
+#   ./toolchain/release.sh                 # build with the manual toolchain and tag the next patch
+#   ./toolchain/release.sh --version 1.1.0
+#   ./toolchain/release.sh --draft         # create the release but do not publish it
+#   ./toolchain/release.sh --no-publish    # only build, put files in dist/release
+#
+# What it does:
+#   1. bumps versionName/versionCode in app/build.gradle.kts and toolchain/build.sh
+#   2. builds a signed release APK (and ABI splits, when the app actually has native code)
+#   3. writes SHA256SUMS and a short notes file
+#   4. creates a GitHub release and uploads the artefacts (unless --no-publish)
+#
+# Signing: export LIMBO_KEYSTORE / LIMBO_STORE_PASSWORD / LIMBO_KEY_ALIAS /
+# LIMBO_KEY_PASSWORD, or let the script use the throwaway key in toolchain/.keys.
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+VERSION=""
+NOTES_FILE=""
+DRAFT=0
+PUBLISH=1
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --version) VERSION="${2:?}"; shift 2 ;;
+    --notes) NOTES_FILE="${2:?}"; shift 2 ;;
+    --draft) DRAFT=1; shift ;;
+    --no-publish) PUBLISH=0; shift ;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    *) echo "Unknown option: $1" >&2; exit 2 ;;
+  esac
+done
+
+log()  { printf '\033[38;5;111m▸\033[0m %s\n' "$*"; }
+ok()   { printf '\033[38;5;114m✓\033[0m %s\n' "$*"; }
+fail() { printf '\033[38;5;203m✗\033[0m %s\n' "$*" >&2; exit 1; }
+
+CURRENT_NAME="$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts | head -1)"
+CURRENT_CODE="$(sed -n 's/.*versionCode = \([0-9]*\).*/\1/p' app/build.gradle.kts | head -1)"
+[[ -n "$CURRENT_NAME" ]] || fail "Could not read versionName from app/build.gradle.kts"
+
+if [[ -z "$VERSION" ]]; then
+  IFS=. read -r major minor patch <<< "$CURRENT_NAME"
+  VERSION="$major.$minor.$((patch + 1))"
+fi
+NEXT_CODE=$((CURRENT_CODE + 1))
+
+log "Releasing $CURRENT_NAME ($CURRENT_CODE) -> $VERSION ($NEXT_CODE)"
+
+# ------------------------------------------------------------------ version bump
+python3 - "$VERSION" "$NEXT_CODE" <<'PY'
+import re, sys
+version, code = sys.argv[1], sys.argv[2]
+gradle = "app/build.gradle.kts"
+text = open(gradle, encoding="utf-8").read()
+text = re.sub(r'versionCode = \d+', f'versionCode = {code}', text, count=1)
+text = re.sub(r'versionName = "[^"]+"', f'versionName = "{version}"', text, count=1)
+open(gradle, "w", encoding="utf-8").write(text)
+
+script = "toolchain/build.sh"
+text = open(script, encoding="utf-8").read()
+text = re.sub(r'VERSION_CODE=\d+', f'VERSION_CODE={code}', text, count=1)
+text = re.sub(r'VERSION_NAME="[^"]+"', f'VERSION_NAME="{version}"', text, count=1)
+open(script, "w", encoding="utf-8").write(text)
+print(f"version bumped to {version} ({code})")
+PY
+
+# ------------------------------------------------------------------ build
+RELEASE_DIR="$ROOT/dist/release/$VERSION"
+rm -rf "$RELEASE_DIR"
+mkdir -p "$RELEASE_DIR"
+
+log "Building release artefacts"
+./toolchain/build.sh --release --out="dist/release/$VERSION" > "$RELEASE_DIR/build.log" 2>&1 || {
+  tail -30 "$RELEASE_DIR/build.log" >&2
+  fail "Build failed"
+}
+rm -f "$RELEASE_DIR/build.log"
+
+APKS=("$RELEASE_DIR"/*.apk)
+[[ -e "${APKS[0]}" ]] || fail "No APK produced"
+ok "Built $(printf '%s ' "${APKS[@]##*/}")"
+
+# The manual toolchain names files Limbo-release.apk; give them the version for the release page.
+for apk in "${APKS[@]}"; do
+  base="${apk##*/}"
+  renamed="${base/Limbo-release/Limbo-$VERSION}"
+  [[ "$base" == "$renamed" ]] || mv "$apk" "$RELEASE_DIR/$renamed"
+done
+
+shopt -s nullglob
+FILES=("$RELEASE_DIR"/*.apk)
+shopt -u nullglob
+
+# ------------------------------------------------------------------ checksums and notes
+( cd "$RELEASE_DIR" && sha256sum *.apk > SHA256SUMS )
+
+if [[ -n "$NOTES_FILE" ]]; then
+  cp "$NOTES_FILE" "$RELEASE_DIR/NOTES.md"
+else
+  cat > "$RELEASE_DIR/NOTES.md" <<EOF
+## Limbo Keyboard $VERSION
+
+$(git log --pretty=format:'- %s' "$(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)"..HEAD | head -40)
+
+### Files
+
+$(for apk in "${FILES[@]}"; do printf -- '- \`%s\` — %s\n' "${apk##*/}" "$(du -h "$apk" | cut -f1)"; done)
+
+Requires Android 8.0 (API 26) or newer. Install with \`adb install -r <file>.apk\`.
+EOF
+fi
+
+ok "Artefacts ready in dist/release/$VERSION"
+
+if [[ "$PUBLISH" != "1" ]]; then
+  exit 0
+fi
+
+command -v gh >/dev/null || fail "gh is not installed; use --no-publish or install the GitHub CLI"
+
+TAG="v$VERSION"
+TITLE="Limbo Keyboard $VERSION"
+ARGS=("$TAG" --title "$TITLE" --notes-file "$RELEASE_DIR/NOTES.md")
+[[ "$DRAFT" == "1" ]] && ARGS+=(--draft)
+ARGS+=("${FILES[@]}" "$RELEASE_DIR/SHA256SUMS")
+
+log "Publishing GitHub release $TAG"
+gh release create "${ARGS[@]}"
+ok "Released $TAG"

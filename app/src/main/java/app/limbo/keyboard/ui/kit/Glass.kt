@@ -75,11 +75,11 @@ object Glass {
     /** Soft ambient lift under a surface. Layered rectangles are much cheaper than a blur. */
     fun drawShadow(canvas: Canvas, area: RectF, radius: Float, depth: Float, dark: Boolean) {
         if (depth <= 0.01f) return
-        val base = if (dark) Color.BLACK else Color.rgb(90, 104, 130)
-        val layers = 5
+        val base = if (dark) Color.BLACK else Color.rgb(74, 86, 108)
+        val layers = 4
         for (i in layers downTo 1) {
-            val spread = depth * 3.4f * i
-            val alpha = (depth * 0.052f) / i
+            val spread = depth * 2.2f * i
+            val alpha = (depth * 0.026f) / i
             fill.shader = null
             fill.color = Colors.alpha(base, alpha)
             rect.set(area.left - spread * 0.35f, area.top + spread * 0.55f, area.right + spread * 0.35f, area.bottom + spread)
@@ -88,7 +88,12 @@ object Glass {
     }
 
     /**
-     * A frosted panel: gradient body, bright top edge, faint bottom reflection, hairline and grain.
+     * A frosted sheet.
+     *
+     * There is no way to sample what sits behind an input-method window, so the frost is built
+     * the way a designer would draw it: a milky, almost flat body whose two stops differ by a
+     * couple of percent, one hairline of light along the top edge, a fine grain that scatters
+     * light, and a border you have to look for.
      */
     fun panel(
         canvas: Canvas,
@@ -99,30 +104,49 @@ object Glass {
         top: Int = theme.panelTop,
         bottom: Int = theme.panelBottom,
         strongTopEdge: Boolean = true,
-        grainAlpha: Float = 0.05f
+        grainAlpha: Float = 0.028f,
+        frost: Float = theme.frost
     ) {
-        fill.shader = gradient(
-            keyOf(top, bottom, area.width().toInt(), area.height().toInt()),
-            0f,
-            area.bottom,
-            top,
-            bottom,
-            area.width()
-        )
-        canvas.drawRoundRect(area, radius, radius, fill)
-
-        fill.shader = null
-
-        if (strongTopEdge) {
-            // Inner light along the upper edge, the way real glass catches a window.
-            fill.color = Colors.alpha(Color.WHITE, if (theme.dark) 0.1f else 0.55f)
-            rect.set(area.left + radius * 0.35f, area.top + 1f, area.right - radius * 0.35f, area.top + 2.6f)
-            canvas.drawRoundRect(rect, 2f, 2f, fill)
+        val flat = Colors.distance(top, bottom) < 0.05f
+        if (flat) {
+            fill.shader = null
+            fill.color = top
+            canvas.drawRoundRect(area, radius, radius, fill)
+        } else {
+            fill.shader = gradient(
+                keyOf(top, bottom, area.width().toInt(), area.height().toInt()),
+                0f,
+                area.bottom,
+                top,
+                bottom,
+                area.width()
+            )
+            canvas.drawRoundRect(area, radius, radius, fill)
+            fill.shader = null
         }
 
-        drawGrain(canvas, area, radius, grainAlpha * (if (theme.dark) 1f else 0.7f), context)
+        // Milk: the veil that makes the sheet read as frosted rather than merely transparent.
+        val veil = if (theme.dark) 0.010f + 0.030f * frost else 0.026f + 0.060f * frost
+        fill.color = Colors.alpha(Color.WHITE, veil)
+        canvas.drawRoundRect(area, radius, radius, fill)
 
-        stroke.color = Colors.alpha(if (theme.dark) Color.WHITE else Color.WHITE, theme.keyStroke * 0.32f)
+        if (strongTopEdge) {
+            // The single glass cue: one pixel of light where a real sheet catches the window.
+            fill.color = Colors.alpha(
+                Color.WHITE,
+                if (theme.dark) 0.055f + 0.055f * theme.sheen * 2f else 0.30f + 0.1f * theme.sheen
+            )
+            rect.set(area.left + radius * 0.6f, area.top + 0.5f, area.right - radius * 0.6f, area.top + 1.5f)
+            canvas.drawRoundRect(rect, 1f, 1f, fill)
+        }
+
+        drawGrain(canvas, area, radius, grainAlpha * (if (theme.dark) 1f else 0.6f), context)
+
+        stroke.color = if (theme.dark) {
+            Colors.alpha(Color.WHITE, 0.05f + 0.06f * theme.keyStroke)
+        } else {
+            Colors.alpha(Color.BLACK, 0.05f)
+        }
         stroke.strokeWidth = 1f
         rect.set(area.left + 0.5f, area.top + 0.5f, area.right - 0.5f, area.bottom - 0.5f)
         canvas.drawRoundRect(rect, radius - 0.5f, radius - 0.5f, stroke)
@@ -143,101 +167,163 @@ object Glass {
         isAccent: Boolean
     ) {
         val style = theme.keyStyle
-        val topColor: Int
-        val bottomColor: Int
 
         if (isAccent) {
-            topColor = Colors.mix(theme.accent, Colors.lighten(theme.accent, 0.22f), 1f - press * 0.4f)
-            bottomColor = Colors.mix(theme.accent, Colors.darken(theme.accent, 0.18f), 1f - press * 0.5f)
-        } else if (isModifier) {
-            topColor = if (style == KeyStyleLike.OUTLINE) Colors.alpha(theme.keyTop, 0.2f) else Colors.mix(theme.keyTop, theme.text, 0.05f)
-            bottomColor = if (style == KeyStyleLike.OUTLINE) Colors.alpha(theme.keyBottom, 0.14f) else Colors.mix(theme.keyBottom, theme.text, 0.05f)
-        } else {
-            topColor = theme.keyTop
-            bottomColor = theme.keyBottom
+            drawAccentKey(canvas, area, radius, theme, press)
+            return
         }
 
-        val pressedTop = if (isAccent) Colors.darken(topColor, 0.1f) else theme.keyPressedTop
-        val pressedBottom = if (isAccent) Colors.darken(bottomColor, 0.12f) else theme.keyPressedBottom
+        val faceColor = when {
+            isModifier -> Colors.mix(theme.keyTop, theme.panelTop, 0.35f)
+            else -> theme.keyTop
+        }
+        val faceBottom = when {
+            isModifier -> Colors.mix(theme.keyBottom, theme.panelBottom, 0.35f)
+            else -> theme.keyBottom
+        }
+        val pressedTop = if (theme.dark) Colors.mix(faceColor, Color.WHITE, 0.085f) else Colors.mix(faceColor, Color.BLACK, 0.055f)
+        val pressedBottom = if (theme.dark) Colors.mix(faceBottom, Color.WHITE, 0.065f) else Colors.mix(faceBottom, Color.BLACK, 0.075f)
 
-        val c1 = Colors.mix(topColor, pressedTop, press)
-        val c2 = Colors.mix(bottomColor, pressedBottom, press)
+        val c1 = Colors.mix(faceColor, pressedTop, press)
+        val c2 = Colors.mix(faceBottom, pressedBottom, press)
 
-        // Lift: the key sits slightly "above" the panel and flattens when pressed.
+        when (style) {
+            KeyStyleLike.CRYSTAL -> drawCrystalKey(canvas, area, radius, theme, press, c1, c2, isModifier)
+            KeyStyleLike.OUTLINE -> drawOutlineKey(canvas, area, radius, theme, press, c1)
+            KeyStyleLike.MINIMAL -> {
+                fill.shader = null
+                fill.color = Colors.alpha(c1, 0.34f + 0.3f * (1f - press))
+                canvas.drawRoundRect(area, radius, radius, fill)
+            }
+            KeyStyleLike.FILLED -> {
+                fill.shader = null
+                fill.color = c1
+                canvas.drawRoundRect(area, radius, radius, fill)
+                fill.color = Colors.alpha(Color.WHITE, 0.03f + 0.05f * theme.sheen)
+                rect.set(area.left + radius * 0.5f, area.top + 0.5f, area.right - radius * 0.5f, area.top + 1.5f)
+                canvas.drawRoundRect(rect, 1f, 1f, fill)
+            }
+            KeyStyleLike.GLASS, KeyStyleLike.SOFT -> {
+                // Frosted cap: flat colour, a hint of vertical falloff, one hairline of light.
+                val alpha = when {
+                    style == KeyStyleLike.SOFT -> 0.62f + 0.22f * theme.frost
+                    isModifier -> 0.70f + 0.18f * theme.frost
+                    else -> 0.82f + 0.14f * theme.frost
+                }
+                fill.shader = null
+                fill.color = Colors.alpha(c1, alpha)
+                canvas.drawRoundRect(area, radius, radius, fill)
+
+                if (Colors.distance(c1, c2) > 0.015f) {
+                    fill.shader = gradient(
+                        keyOf(c1, c2, area.width().toInt(), area.height().toInt()),
+                        area.top,
+                        area.bottom,
+                        Colors.alpha(c1, alpha * 0.35f),
+                        Colors.alpha(c2, alpha * 0.55f),
+                        area.width()
+                    )
+                    canvas.drawRoundRect(area, radius, radius, fill)
+                    fill.shader = null
+                }
+
+                // Pressed caps get a faint accent wash instead of a heavy tint.
+                if (press > 0.01f) {
+                    fill.color = Colors.alpha(theme.accent, 0.07f * press)
+                    canvas.drawRoundRect(area, radius, radius, fill)
+                }
+
+                fill.color = Colors.alpha(
+                    Color.WHITE,
+                    (if (theme.dark) 0.06f else 0.42f) * (1f - press * 0.45f)
+                )
+                rect.set(area.left + radius * 0.55f, area.top + 0.5f, area.right - radius * 0.55f, area.top + 1.5f)
+                canvas.drawRoundRect(rect, 1f, 1f, fill)
+
+                stroke.color = if (theme.dark) Colors.alpha(Color.WHITE, 0.055f) else Colors.alpha(Color.BLACK, 0.045f)
+                stroke.strokeWidth = 1f
+                rect.set(area.left + 0.5f, area.top + 0.5f, area.right - 0.5f, area.bottom - 0.5f)
+                canvas.drawRoundRect(rect, radius - 0.5f, radius - 0.5f, stroke)
+            }
+        }
+    }
+
+    /** The primary action: a solid accent cap with one crisp edge of light. */
+    private fun drawAccentKey(canvas: Canvas, area: RectF, radius: Float, theme: Theme, press: Float) {
+        val base = if (press > 0.01f) Colors.mix(theme.accent, Color.BLACK, 0.07f * press) else theme.accent
+        fill.shader = null
+        fill.color = base
+        canvas.drawRoundRect(area, radius, radius, fill)
+        fill.color = Colors.alpha(Color.WHITE, 0.16f * (1f - press * 0.6f))
+        rect.set(area.left + radius * 0.55f, area.top + 0.5f, area.right - radius * 0.55f, area.top + 1.5f)
+        canvas.drawRoundRect(rect, 1f, 1f, fill)
+    }
+
+    /** The optional glossy cap: specular sweep, inner light, a soft lift. Off by default. */
+    private fun drawCrystalKey(
+        canvas: Canvas,
+        area: RectF,
+        radius: Float,
+        theme: Theme,
+        press: Float,
+        c1: Int,
+        c2: Int,
+        isModifier: Boolean
+    ) {
         val lift = (1f - press) * theme.shadow * 2.2f
-        if (theme.shadow > 0.02f && style != KeyStyleLike.MINIMAL) {
-            fill.shader = null
-            fill.color = Colors.alpha(Color.BLACK, (0.1f + theme.shadow * 0.16f) * (1f - press * 0.7f) * if (theme.dark) 1f else 0.55f)
-            rect.set(area.left, area.top + lift, area.right, area.bottom + lift)
-            canvas.drawRoundRect(rect, radius, radius, fill)
-        }
+        fill.shader = null
+        fill.color = Colors.alpha(Color.BLACK, (0.10f + theme.shadow * 0.16f) * (1f - press * 0.7f) * if (theme.dark) 1f else 0.55f)
+        rect.set(area.left, area.top + lift, area.right, area.bottom + lift)
+        canvas.drawRoundRect(rect, radius, radius, fill)
 
         val face = RectF(area.left, area.top, area.right, area.bottom - lift * 0.35f)
+        fill.shader = gradient(
+            keyOf(c1, c2, face.width().toInt(), face.height().toInt()),
+            face.top,
+            face.bottom,
+            c1,
+            c2,
+            face.width()
+        )
+        canvas.drawRoundRect(face, radius, radius, fill)
+        fill.shader = null
 
-        if (style == KeyStyleLike.MINIMAL) {
-            fill.shader = null
-            fill.color = Colors.alpha(c1, 0.55f + 0.35f * (1f - press))
-            canvas.drawRoundRect(face, radius, radius, fill)
-        } else if (style == KeyStyleLike.FILLED) {
-            fill.shader = null
-            fill.color = c1
-            canvas.drawRoundRect(face, radius, radius, fill)
-            if (theme.sheen > 0.01f) {
-                fill.color = Colors.alpha(Color.WHITE, 0.05f * theme.sheen)
-                rect.set(face.left, face.top, face.right, face.centerY())
-                canvas.drawRoundRect(rect, radius, radius, fill)
-            }
-        } else if (style == KeyStyleLike.OUTLINE) {
-            fill.shader = null
-            fill.color = Colors.alpha(c1, 0.16f)
-            canvas.drawRoundRect(face, radius, radius, fill)
-            stroke.color = Colors.alpha(theme.text, (0.22f + 0.2f * press))
-            stroke.strokeWidth = 1.2f
-            rect.set(face.left + 0.6f, face.top + 0.6f, face.right - 0.6f, face.bottom - 0.6f)
-            canvas.drawRoundRect(rect, radius - 0.6f, radius - 0.6f, stroke)
-        } else {
-            // SOFT and GLASS share a body; GLASS adds the specular sweep.
-            fill.shader = gradient(
-                keyOf(c1, c2, face.width().toInt(), face.height().toInt()),
-                0f,
-                face.bottom,
-                c1,
-                c2,
-                face.width()
-            )
-            canvas.drawRoundRect(face, radius, radius, fill)
-            fill.shader = null
+        fill.color = Colors.alpha(Color.WHITE, (if (theme.dark) 0.14f else 0.7f) * (1f - press * 0.6f))
+        rect.set(face.left + radius * 0.4f, face.top + 1f, face.right - radius * 0.4f, face.top + 2.4f)
+        canvas.drawRoundRect(rect, 2f, 2f, fill)
 
-            // Inner top light
-            fill.color = Colors.alpha(Color.WHITE, (if (theme.dark) 0.13f else 0.7f) * (1f - press * 0.6f))
-            rect.set(face.left + radius * 0.4f, face.top + 1f, face.right - radius * 0.4f, face.top + 2.2f)
-            canvas.drawRoundRect(rect, 2f, 2f, fill)
-
-            if (style == KeyStyleLike.GLASS && theme.sheen > 0.01f) {
-                // Diagonal specular sweep
-                val sweep = Path()
-                val w = face.width()
-                val h = face.height()
-                sweep.reset()
-                sweep.moveTo(face.left, face.top + h * 0.62f)
-                sweep.lineTo(face.left + w * 0.46f, face.top)
-                sweep.lineTo(face.left + w * 0.72f, face.top)
-                sweep.lineTo(face.left, face.top + h)
-                sweep.close()
-                fill.color = Colors.alpha(Color.WHITE, 0.05f * theme.sheen * (1f - press))
-                canvas.drawPath(sweep, fill)
-            }
-
-            stroke.color = Colors.alpha(if (theme.dark) Color.WHITE else Color.WHITE, theme.keyStroke * if (theme.dark) 0.26f else 0.75f)
-            stroke.strokeWidth = 1f
-            rect.set(face.left + 0.5f, face.top + 0.5f, face.right - 0.5f, face.bottom - 0.5f)
-            canvas.drawRoundRect(rect, radius - 0.5f, radius - 0.5f, stroke)
+        if (theme.sheen > 0.01f) {
+            val sweep = Path()
+            val w = face.width()
+            val h = face.height()
+            sweep.reset()
+            sweep.moveTo(face.left, face.top + h * 0.62f)
+            sweep.lineTo(face.left + w * 0.46f, face.top)
+            sweep.lineTo(face.left + w * 0.72f, face.top)
+            sweep.lineTo(face.left, face.top + h)
+            sweep.close()
+            fill.color = Colors.alpha(Color.WHITE, 0.06f * theme.sheen * 3f * (1f - press))
+            canvas.drawPath(sweep, fill)
         }
 
-        if (press > 0.01f) {
-            fill.color = Colors.alpha(theme.accent, 0.1f * press)
+        stroke.color = Colors.alpha(Color.WHITE, if (theme.dark) 0.10f else 0.75f)
+        stroke.strokeWidth = 1f
+        rect.set(face.left + 0.5f, face.top + 0.5f, face.right - 0.5f, face.bottom - 0.5f)
+        canvas.drawRoundRect(rect, radius - 0.5f, radius - 0.5f, stroke)
+        if (isModifier) {
+            fill.color = Colors.alpha(theme.panelBottom, 0.18f)
             canvas.drawRoundRect(face, radius, radius, fill)
         }
+    }
+
+    private fun drawOutlineKey(canvas: Canvas, area: RectF, radius: Float, theme: Theme, press: Float, c1: Int) {
+        fill.shader = null
+        fill.color = Colors.alpha(c1, 0.12f + 0.06f * press)
+        canvas.drawRoundRect(area, radius, radius, fill)
+        stroke.color = Colors.alpha(theme.text, 0.18f + 0.18f * press)
+        stroke.strokeWidth = 1.2f
+        rect.set(area.left + 0.6f, area.top + 0.6f, area.right - 0.6f, area.bottom - 0.6f)
+        canvas.drawRoundRect(rect, radius - 0.6f, radius - 0.6f, stroke)
     }
 
     /** Accent wash used for selected chips, active segments and the caret. */

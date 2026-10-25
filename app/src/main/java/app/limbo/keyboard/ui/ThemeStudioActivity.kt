@@ -16,6 +16,7 @@ import app.limbo.keyboard.theme.BarStyle
 import app.limbo.keyboard.theme.KeyStyle
 import app.limbo.keyboard.theme.Theme
 import app.limbo.keyboard.theme.Themes
+import app.limbo.keyboard.ui.kit.ChipsRow
 import app.limbo.keyboard.ui.kit.ColorRow
 import app.limbo.keyboard.ui.kit.GlassDrawable
 import app.limbo.keyboard.ui.kit.Haptics
@@ -116,11 +117,18 @@ class ThemeStudioActivity : BaseActivity() {
         val card = Ui.card(this, theme, 16f, 24f)
         card.addView(Ui.section(this, I18n.t("Характер", "Character"), theme))
 
-        val styleLabels = KeyStyle.entries.map { if (I18n.isRussian) it.labelRu else it.labelEn }
-        val style = Segmented(this, theme, styleLabels, working.keyStyle.ordinal) { index ->
-            edit { it.copy(keyStyle = KeyStyle.entries[index]) }
+        // Six styles no longer fit a segmented control without squeezing the labels, so the
+        // picker scrolls instead.
+        val styleChips = ChipsRow(
+            this, theme,
+            KeyStyle.entries.map { it.name to if (I18n.isRussian) it.labelRu else it.labelEn },
+            setOf(working.keyStyle.name),
+            multi = false
+        ) { selected ->
+            val style = KeyStyle.entries.firstOrNull { it.name == selected.firstOrNull() } ?: return@ChipsRow
+            edit { it.copy(keyStyle = style) }
         }
-        card.addView(style, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, Dp.dpi(this, 44f)).apply {
+        card.addView(styleChips, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, Dp.dpi(this, 40f)).apply {
             topMargin = Dp.dpi(this@ThemeStudioActivity, 12f)
         })
 
@@ -132,11 +140,14 @@ class ThemeStudioActivity : BaseActivity() {
             topMargin = Dp.dpi(this@ThemeStudioActivity, 10f)
         })
 
+        card.addView(sliderRow(I18n.t("Мутность", "Frost"), 0f, 1f, working.frost, 0.05f, { "${(it * 100).toInt()}%" }) {
+            edit { t -> t.copy(frost = it) }
+        })
+        card.addView(sliderRow(I18n.t("Свет по кромке", "Edge light"), 0f, 1f, working.sheen, 0.05f, { "${(it * 100).toInt()}%" }) {
+            edit { t -> t.copy(sheen = it) }
+        })
         card.addView(sliderRow(I18n.t("Тени", "Shadow"), 0f, 1f, working.shadow, 0.05f, { "${(it * 100).toInt()}%" }) {
             edit { t -> t.copy(shadow = it) }
-        })
-        card.addView(sliderRow(I18n.t("Блик", "Sheen"), 0f, 1f, working.sheen, 0.05f, { "${(it * 100).toInt()}%" }) {
-            edit { t -> t.copy(sheen = it) }
         })
         content.addView(card, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
     }
@@ -187,18 +198,7 @@ class ThemeStudioActivity : BaseActivity() {
         })
 
         val dayNight = Segmented(this, theme, listOf(I18n.t("Тёмная", "Dark"), I18n.t("Светлая", "Light")), if (working.dark) 0 else 1) { index ->
-            val dark = index == 0
-            working = working.copy(
-                dark = dark,
-                panelTop = if (dark) Colors.mix(working.wallTop, android.graphics.Color.BLACK, 0.55f) else Colors.mix(working.wallTop, android.graphics.Color.WHITE, 0.58f),
-                panelBottom = if (dark) Colors.mix(working.wallBottom, android.graphics.Color.BLACK, 0.62f) else Colors.mix(working.wallBottom, android.graphics.Color.WHITE, 0.5f),
-                keyTop = if (dark) Colors.mix(working.wallTop, android.graphics.Color.WHITE, 0.16f) else Colors.mix(working.wallTop, android.graphics.Color.WHITE, 0.88f),
-                keyBottom = if (dark) Colors.mix(working.wallBottom, android.graphics.Color.WHITE, 0.06f) else Colors.mix(working.wallBottom, android.graphics.Color.WHITE, 0.76f),
-                keyPressedTop = if (dark) Colors.mix(working.wallTop, android.graphics.Color.BLACK, 0.2f) else Colors.mix(working.wallTop, android.graphics.Color.BLACK, 0.12f),
-                keyPressedBottom = if (dark) Colors.mix(working.wallBottom, android.graphics.Color.BLACK, 0.24f) else Colors.mix(working.wallBottom, android.graphics.Color.BLACK, 0.16f),
-                text = if (dark) Colors.alpha(android.graphics.Color.WHITE, 0.97f) else Colors.mix(working.wallBottom, android.graphics.Color.BLACK, 0.86f),
-                textSecondary = if (dark) Colors.alpha(android.graphics.Color.WHITE, 0.58f) else Colors.mix(working.wallBottom, android.graphics.Color.BLACK, 0.5f)
-            )
+            working = app.limbo.keyboard.theme.ThemeFactory.recolor(working, index == 0)
             persistNow()
             preview.theme = working
             previewFrame.background = GlassDrawable(this, working, 26f)

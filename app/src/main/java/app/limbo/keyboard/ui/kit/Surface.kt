@@ -33,9 +33,9 @@ class KeyboardSurfaceDrawable(private val ctx: Context, var theme: Theme) : Draw
         path.reset()
         path.addRoundRect(rect, radius, radius, Path.Direction.CW)
 
-        // Ambient shadow above the sheet
+        // Ambient shadow above the sheet: a soft seam, not a drop shadow.
         paint.shader = null
-        paint.color = Colors.alpha(Color.BLACK, if (theme.dark) 0.28f else 0.16f)
+        paint.color = Colors.alpha(Color.BLACK, if (theme.dark) 0.16f else 0.09f)
         rect.set(0f, -Dp.dp(ctx, 2f), w, h)
         canvas.drawRoundRect(rect, radius, radius, paint)
 
@@ -47,8 +47,8 @@ class KeyboardSurfaceDrawable(private val ctx: Context, var theme: Theme) : Draw
         canvas.drawPath(path, paint)
         paint.shader = null
 
-        // Light from above
-        paint.color = Colors.alpha(theme.accent, if (theme.dark) 0.1f else 0.08f)
+        // A whisper of light from above; the sheet itself stays neutral.
+        paint.color = Colors.alpha(Color.WHITE, if (theme.dark) 0.022f else 0.06f)
         rect.set(0f, 0f, w, h * 0.5f)
         canvas.save()
         canvas.clipPath(path)
@@ -57,14 +57,14 @@ class KeyboardSurfaceDrawable(private val ctx: Context, var theme: Theme) : Draw
 
         // Grain
         grainPaint.shader = android.graphics.BitmapShader(Glass.grain(ctx), android.graphics.Shader.TileMode.REPEAT, android.graphics.Shader.TileMode.REPEAT)
-        grainPaint.alpha = 8
+        grainPaint.alpha = 6
         canvas.save()
         canvas.clipPath(path)
         canvas.drawRect(0f, 0f, w, h, grainPaint)
         canvas.restore()
 
-        // Top hairline
-        paint.color = Colors.alpha(Color.WHITE, if (theme.dark) 0.12f else 0.7f)
+        // One pixel of light along the top edge
+        paint.color = Colors.alpha(Color.WHITE, if (theme.dark) 0.07f else 0.45f)
         rect.set(radius * 0.6f, 0.5f, w - radius * 0.6f, 1.5f)
         canvas.drawRoundRect(rect, 1f, 1f, paint)
     }

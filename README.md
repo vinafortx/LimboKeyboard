@@ -19,6 +19,25 @@
 
 <img src="docs/preview.gif" alt="Клавиатура печатает слово limbo: клавиша мягко нажимается, над пальцем появляется увеличенная буква" width="100%" />
 
+<table>
+<tr>
+<td width="50%" valign="top" align="center">
+
+### [Скачать APK →](https://github.com/vinafortx/LimboKeyboard/releases/latest)
+
+`Limbo-1.0.0-universal.apk` · Android 8.0+ · ~1 МБ
+
+</td>
+<td width="50%" valign="top" align="center">
+
+### [Собрать самому →](#сборка)
+
+Gradle или `./toolchain/build.sh` — оба пути дают один и тот же APK
+
+</td>
+</tr>
+</table>
+
 ---
 
 ## Почему Limbo
@@ -58,7 +77,7 @@ Limbo собран вокруг трёх идей, которые чувству
 </tr>
 </table>
 
-> 🧊 Всё оформление — стекло, блики, тонкая зернистость и мягкие тени — рисуется на устройстве, без картинок и без единой внешней библиотеки. Тот же код работает и в приложении, и в превью на этой странице.
+> 🧊 Оформление — матовое стекло, мягкие тени и едва заметная зернистость — рисуется на устройстве, без картинок и без единой внешней библиотеки. Тот же код работает и в приложении, и в превью на этой странице.
 
 ---
 
@@ -97,7 +116,7 @@ Limbo собран вокруг трёх идей, которые чувству
 
 - **30 готовых тем** — от спокойного инея до тёплого заката и светлой бумаги. Полная галерея ниже.
 - **Студия оформления**: любой цвет фона и акцента, радиус панели и клавиш, зазор, высота клавиш, размер шрифта, разрядка, сила теней и блик — всё живьём, с мгновенным превью.
-- **5 характеров клавиш**: стекло, мягкие, плотные, контур, минимал.
+- **6 характеров клавиш**: матовое, мягкие, плотные, контур, минимал, кристалл.
 - **3 положения полосы подсказок**: парящая, встроенная, скрытая.
 - **Свои темы** сохраняются рядом с готовыми и ведут себя так же.
 - Светлая и тёмная версии любого оформления — одним переключателем.
@@ -126,7 +145,7 @@ Limbo собран вокруг трёх идей, которые чувству
 
 ## Быстрый старт
 
-- [ ] **Установить** APK: `adb install -r dist/Limbo-debug.apk`
+- [ ] **Установить** APK: [последний релиз](https://github.com/vinafortx/LimboKeyboard/releases/latest) или `adb install -r dist/Limbo-release.apk`
 - [ ] **Включить**: Настройки Android → Система → Языки и ввод → Экранная клавиатура → **Limbo**
 - [ ] **Выбрать**: там же, «Клавиатура по умолчанию» → **Limbo**
 - [ ] **Настроить**: открыть приложение Limbo и пройти знакомство
@@ -183,8 +202,8 @@ Limbo собран вокруг трёх идей, которые чувству
 | Настройка темы | Высота клавиш | 38–72 |
 | Настройка темы | Размер шрифта | 80–125 % |
 | Настройка темы | Разрядка | −0.02…0.08 |
-| Настройка темы | Тени · блик · обводка | 0–100 % |
-| Настройка темы | Характер клавиш | Стекло · Мягкие · Плотные · Контур · Минимал |
+| Настройка темы | Тени · блик по кромке · обводка · мутность | 0–100 % |
+| Настройка темы | Характер клавиш | Матовое · Мягкие · Плотные · Контур · Минимал · Кристалл |
 | Настройка темы | Полоса подсказок | Парящая · Встроенная · Скрытая |
 | Ввод | Заглавные после точки | Вкл/выкл |
 | Ввод | Умный пробел | Вкл/выкл |
@@ -273,8 +292,13 @@ Limbo собран вокруг трёх идей, которые чувству
 ```bash
 ./gradlew assembleDebug        # app/build/outputs/apk/debug/app-debug.apk
 ./gradlew assembleRelease      # подписанный release-вариант
+./gradlew bundleRelease        # App Bundle для Play
 ./gradlew installDebug         # сразу на подключённое устройство
 ```
+
+Подпись берётся из `LIMBO_KEYSTORE` / `LIMBO_STORE_PASSWORD` / `LIMBO_KEY_ALIAS` /
+`LIMBO_KEY_PASSWORD`; если переменных нет, используется локальный ключ из `toolchain/.keys/`,
+чтобы сборка оставалась устанавливаемой. Подробности — [`docs/RELEASE.md`](docs/RELEASE.md).
 
 Если Gradle ещё не установлен, используйте Android Studio или `gradle wrapper` один раз.
 Путь к SDK можно указать в `local.properties` (см. `local.properties.example`).
@@ -282,8 +306,10 @@ Limbo собран вокруг трёх идей, которые чувству
 ### Вариант 2 — свой сборщик, без Gradle
 
 ```bash
-./toolchain/build.sh              # debug
-./toolchain/build.sh --release    # release
+./toolchain/build.sh                       # debug
+./toolchain/build.sh --release             # release
+./toolchain/build.sh --release --out=dist  # выбрать папку для результата
+./toolchain/release.sh                     # поднять версию, собрать и опубликовать релиз
 ```
 
 Скрипт делает ровно то, что делает Gradle, но явно и по шагам:
@@ -296,13 +322,37 @@ Limbo собран вокруг трёх идей, которые чувству
 | 4 | `d8` | bytecode → `classes.dex` |
 | 5 | `zip` + `zipalign` | DEX кладётся в APK, архив выравнивается |
 | 6 | `apksigner` | подпись ключом из `toolchain/.keys/` (создаётся при первом запуске) |
+| 7 | `unzip` + `zip` | ABI-сплиты — только если в пакете есть `lib/<abi>/` |
 
 ```bash
 ANDROID_HOME=~/Android/Sdk KOTLIN_HOME=/opt/kotlinc ./toolchain/build.sh
 BUILD_TOOLS_DIR=~/Android/Sdk/build-tools/35.0.0 ./toolchain/build.sh   # своя версия инструментов
 ```
 
-Результат — `dist/Limbo-debug.apk` (~1 МБ). Ключи и промежуточные файлы лежат вне git.
+Результат — `dist/Limbo-release.apk` (~1 МБ). Ключи и промежуточные файлы лежат вне git.
+
+<div align="center">
+
+### Один APK или по одному на архитектуру?
+
+</div>
+
+Сейчас — **один universal APK**, и это не упрощение. В клавиатуре нет нативного кода: вся логика
+и вся отрисовка — Kotlin, который компилируется в один `classes.dex`, а DEX не зависит от
+архитектуры процессора. APK «под arm64» и «под x86_64» получились бы байт в байт одинаковыми, и
+четыре копии одного файла на странице загрузки только путали бы.
+
+Как только в проекте появится `.so` (жестовый движок, нативный декодер), те же скрипты начнут
+выпускать настоящие сплиты без правок:
+
+| Где | Что делать | Результат |
+|---|---|---|
+| `toolchain/build.sh` | ничего — шаг 7 включается сам при наличии `lib/<abi>/` | `Limbo-<версия>-arm64-v8a.apk`, `…-armeabi-v7a.apk`, `…-x86_64.apk` + universal |
+| Gradle | `LIMBO_ABI_SPLITS=1 ./gradlew assembleRelease` | сплиты + `app-universal-release.apk` |
+| Play | `./gradlew bundleRelease` | Play и `bundletool` нарезают сплиты сами |
+
+Блок `splits { abi { … } }` в `app/build.gradle.kts` уже есть — выключен и с комментарием, чтобы
+включение было одной переменной окружения.
 
 <details>
 <summary><b>Что именно делает скрипт (для тех, кто повторяет руками)</b></summary>
@@ -369,6 +419,7 @@ app/src/main/java/app/limbo/keyboard/
 │   ├── Dictionary.kt     личный словарь подсказок
 │   └── Panels.kt         буфер, эмодзи, шторка быстрых настроек
 └── ui/              экраны приложения
+    ├── kit/               стекло, панели, обои, размытие фона
     ├── OnboardingActivity.kt  восемь шагов знакомства
     ├── HomeActivity.kt        живая клавиатура и статус
     ├── SettingsActivity.kt    поведение и раскладка
@@ -495,11 +546,15 @@ A modular Android keyboard built around three ideas:
   never get pushed out, up to 200 entries, all on device.
 
 Plus: 8 languages with their familiar layouts, 30 presets, a full theme studio (any colour, radius,
-gap, height, type scale, shadow, sheen), five key styles, word suggestions from a personal
+gap, height, type scale, shadow, edge light, frost), six key styles, word suggestions from a personal
 dictionary, emoji, and an eight-step onboarding that actually teaches the keyboard.
 
-**Install:** `adb install -r dist/Limbo-debug.apk`, then enable and select Limbo in
+**Install:** [download the latest APK](https://github.com/vinafortx/LimboKeyboard/releases/latest) or
+`adb install -r dist/Limbo-release.apk`, then enable and select Limbo in
 *Settings → System → Languages & input → On-screen keyboard*.
+
+**Releases:** one universal APK, because the app has no native code and a DEX is architecture
+independent. `docs/RELEASE.md` explains when that changes and how to sign and publish.
 
 **Build:** `./gradlew assembleDebug`, or `./toolchain/build.sh` for the manual aapt2 → kotlinc → d8 →
 zipalign → apksigner pipeline (both documented above).

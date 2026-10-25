@@ -37,31 +37,24 @@ class WallpaperDrawable(private val ctx: Context, var theme: Theme) : Drawable()
         val h = bounds.height().toFloat()
 
         paint.shader = android.graphics.LinearGradient(
-            0f, 0f, w * 0.35f, h,
+            0f, 0f, w * 0.22f, h,
             theme.wallTop, theme.wallBottom, Shader.TileMode.CLAMP
         )
         paint.alpha = 255
         canvas.drawRect(0f, 0f, w, h, paint)
 
+        // One soft source of light. Two would already read as a gradient poster.
         paint.shader = RadialGradient(
-            w * 0.16f, h * 0.08f, w * 0.95f,
-            intArrayOf(Colors.alpha(theme.accent, if (theme.dark) 0.34f else 0.3f), Colors.alpha(theme.accent, 0f)),
+            w * 0.2f, h * 0.1f, w * 1.05f,
+            intArrayOf(Colors.alpha(theme.accent, if (theme.dark) 0.12f else 0.10f), Colors.alpha(theme.accent, 0f)),
             floatArrayOf(0f, 1f), Shader.TileMode.CLAMP
         )
         canvas.drawRect(0f, 0f, w, h, paint)
 
         paint.shader = RadialGradient(
-            w * 1.05f, h * 0.55f, w * 0.9f,
-            intArrayOf(Colors.alpha(Colors.shiftHue(theme.accent, 62f), 0.24f), Colors.alpha(theme.accent, 0f)),
+            w * 1.02f, h * 0.72f, w * 0.85f,
+            intArrayOf(Colors.alpha(theme.wallBottom, if (theme.dark) 0.3f else 0.25f), Colors.alpha(theme.wallBottom, 0f)),
             floatArrayOf(0f, 1f), Shader.TileMode.CLAMP
-        )
-        canvas.drawRect(0f, 0f, w, h, paint)
-
-        // Vignette keeps the eye in the middle of the screen.
-        paint.shader = RadialGradient(
-            w * 0.5f, h * 0.42f, max(w, h) * 0.95f,
-            intArrayOf(Color.TRANSPARENT, Colors.alpha(Color.BLACK, if (theme.dark) 0.35f else 0.12f)),
-            floatArrayOf(0.55f, 1f), Shader.TileMode.CLAMP
         )
         canvas.drawRect(0f, 0f, w, h, paint)
         paint.shader = null
@@ -72,7 +65,7 @@ class WallpaperDrawable(private val ctx: Context, var theme: Theme) : Drawable()
     private fun drawGrain(canvas: Canvas, w: Float, h: Float) {
         val source = Glass.grain(ctx)
         grainPaint.shader = android.graphics.BitmapShader(source, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
-        grainPaint.alpha = 7
+        grainPaint.alpha = 5
         canvas.drawRect(0f, 0f, w, h, grainPaint)
     }
 
@@ -97,9 +90,9 @@ class GlassDrawable(
         val b = bounds
         rect.set(b.left.toFloat(), b.top.toFloat(), b.right.toFloat(), b.bottom.toFloat())
         val radius = Dp.dp(ctx, radiusDp)
-        val top = Colors.alpha(theme.panelTop, 0.92f * strength)
-        val bottom = Colors.alpha(theme.panelBottom, 0.86f * strength)
-        Glass.drawShadow(canvas, rect, radius, theme.shadow * 2f * strength, theme.dark)
+        val top = Colors.alpha(theme.panelTop, (0.86f + 0.1f * theme.frost) * strength)
+        val bottom = Colors.alpha(theme.panelBottom, (0.82f + 0.12f * theme.frost) * strength)
+        Glass.drawShadow(canvas, rect, radius, theme.shadow * 1.6f * strength, theme.dark)
         Glass.panel(canvas, rect, radius, theme, ctx, top, bottom, strongEdge, 0.05f)
     }
 
