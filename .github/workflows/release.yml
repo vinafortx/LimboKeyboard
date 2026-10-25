@@ -1,0 +1,73 @@
+name: Release
+
+# Publishes the signed APK that lives in releases/<version>/ as a GitHub release asset.
+#
+# Why the APK is committed: the build is fully reproducible offline, but a binary attached to a
+# release is what people actually download, and keeping it in the repository means the file on the
+# release page is byte-for-byte the one whose checksum is next to it. `toolchain/release.sh`
+# produces and stages it; this workflow only attaches what is already in the tree.
+#
+# Trigger it by pushing a tag (v1.1.0) or from the Actions tab.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish, e.g. v1.0.0'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Attach APK to the release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          TAG="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          [[ -n "$TAG" ]] || { echo "No tag"; exit 1; }
+          VERSION="${TAG#v}"
+          DIR="releases/$VERSION"
+          [[ -d "$DIR" ]] || { echo "No artefacts in $DIR"; ls -R releases || true; exit 1; }
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+          ( cd "$DIR" && sha256sum -c SHA256SUMS )
+
+      - name: Attach artefacts
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Limbo Keyboard ${{ steps.version.outputs.version }}
+          files: |
+            releases/${{ steps.version.outputs.version }}/*.apk
+            releases/${{ steps.version.outputs.version }}/SHA256SUMS
+          fail_on_unmatched_files: true
+
+  verify-build:
+    name: Gradle · assembleRelease (sanity)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build
+        run: gradle assembleRelease --no-daemon --stacktrace

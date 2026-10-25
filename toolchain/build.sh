@@ -23,19 +23,28 @@ WORK="$ROOT/toolchain/.work"
 DIST="$ROOT/dist"
 KEYS="$ROOT/toolchain/.keys"
 BUILD_TYPE="debug"
+ABI_SPLITS=0
+OUT_DIR=""
 
 for arg in "$@"; do
   case "$arg" in
     --release) BUILD_TYPE="release" ;;
     --debug) BUILD_TYPE="debug" ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    --abi-splits) ABI_SPLITS=1 ;;
+    --out=*) OUT_DIR="${arg#--out=}" ;;
+    -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
     *) echo "Unknown option: $arg" >&2; exit 2 ;;
   esac
 done
 
+if [[ -n "$OUT_DIR" ]]; then
+  DIST="$ROOT/$OUT_DIR"
+fi
+
 log()  { printf '\033[38;5;111m▸\033[0m %s\n' "$*"; }
 ok()   { printf '\033[38;5;114m✓\033[0m %s\n' "$*"; }
 fail() { printf '\033[38;5;203m✗\033[0m %s\n' "$*" >&2; exit 1; }
+warn() { printf '\033[38;5;179m!\033[0m %s\n' "$*" >&2; }
 
 # ---------------------------------------------------------------- locate Java
 if [[ -n "${JAVA_HOME:-}" && -x "$JAVA_HOME/bin/java" ]]; then
@@ -97,7 +106,7 @@ fi
 
 MIN_SDK=26
 TARGET_SDK=34
-VERSION_CODE=1
+VERSION_CODE=2
 VERSION_NAME="1.0.0"
 
 log "Java      $(basename "$JAVA")"
@@ -160,31 +169,70 @@ cp "$WORK/base.apk" "$WORK/unsigned.apk"
 
 # ---------------------------------------------------------------- 6. sign
 mkdir -p "$KEYS"
-KEYSTORE="$KEYS/limbo-${BUILD_TYPE}.jks"
-STORE_PASS="limbo-keyboard"
+KEYSTORE="${LIMBO_KEYSTORE:-$KEYS/limbo-${BUILD_TYPE}.jks}"
+STORE_PASS="${LIMBO_STORE_PASSWORD:-limbo-keyboard}"
+KEY_ALIAS="${LIMBO_KEY_ALIAS:-limbo}"
+KEY_PASS="${LIMBO_KEY_PASSWORD:-$STORE_PASS}"
+
 if [[ ! -f "$KEYSTORE" ]]; then
-  log "Creating a keystore for $BUILD_TYPE builds"
+  log "Creating a keystore for $BUILD_TYPE builds ($KEYSTORE)"
   "$KEYTOOL" -genkeypair -v \
     -keystore "$KEYSTORE" \
     -storepass "$STORE_PASS" \
-    -keypass "$STORE_PASS" \
-    -alias limbo \
+    -keypass "$KEY_PASS" \
+    -alias "$KEY_ALIAS" \
     -keyalg RSA -keysize 2048 -validity 10000 \
     -dname "CN=Limbo Keyboard, OU=Build, O=Limbo, L=, S=, C=" >/dev/null 2>&1
 fi
 
-OUT="$DIST/Limbo-$BUILD_TYPE.apk"
-"$APKSIGNER" sign \
-  --ks "$KEYSTORE" \
-  --ks-pass "pass:$STORE_PASS" \
-  --key-pass "pass:$STORE_PASS" \
-  --ks-key-alias limbo \
-  --min-sdk-version "$MIN_SDK" \
-  --out "$OUT" \
-  "$WORK/aligned.apk"
+sign() {  # sign <in> <out>
+  "$APKSIGNER" sign \
+    --ks "$KEYSTORE" \
+    --ks-pass "pass:$STORE_PASS" \
+    --key-pass "pass:$KEY_PASS" \
+    --ks-key-alias "$KEY_ALIAS" \
+    --min-sdk-version "$MIN_SDK" \
+    --v2-signing-enabled true --v3-signing-enabled true \
+    --out "$2" "$1"
+  "$APKSIGNER" verify --min-sdk-version "$MIN_SDK" "$2" >/dev/null
+  rm -f "$2.idsig"  # v4 signature sidecar; the release ships v2/v3 only
+}
 
-"$APKSIGNER" verify --min-sdk-version "$MIN_SDK" "$OUT" >/dev/null
+OUT="$DIST/Limbo-$BUILD_TYPE.apk"
+sign "$WORK/aligned.apk" "$OUT"
 
 ok "Built $OUT ($(du -h "$OUT" | cut -f1))"
 ok "Signed with $KEYSTORE"
+
+# ---------------------------------------------------------------- 7. ABI splits
+# A pure-Kotlin app carries one DEX for every CPU, so per-ABI APKs would be identical files.
+# The split step therefore only runs when the package actually contains native libraries, or
+# when --abi-splits is passed explicitly (useful once an .so shows up).
+NATIVE_LIBS="$(unzip -l "$WORK/aligned.apk" | awk '{print $4}' | grep -E '^lib/[^/]+/' | cut -d/ -f2 | sort -u || true)"
+if [[ -n "$NATIVE_LIBS" ]]; then
+  log "Native libraries found: $(echo "$NATIVE_LIBS" | tr '\n' ' ')"
+  SUFFIX="-universal"
+  mv "$OUT" "$DIST/Limbo-$BUILD_TYPE$SUFFIX.apk"
+  OUT="$DIST/Limbo-$BUILD_TYPE$SUFFIX.apk"
+  for abi in $NATIVE_LIBS; do
+    SPLIT="$WORK/split-$abi.apk"
+    rm -rf "$WORK/split" && mkdir -p "$WORK/split"
+    unzip -q "$WORK/aligned.apk" -d "$WORK/split"
+    # keep this ABI's libraries and drop every other one
+    if [[ -d "$WORK/split/lib" ]]; then
+      for dir in "$WORK/split/lib"/*; do
+        [[ "$(basename "$dir")" == "$abi" ]] || rm -rf "$dir"
+      done
+    fi
+    (cd "$WORK/split" && zip -q -r "$SPLIT" .)
+    sign "$SPLIT" "$DIST/Limbo-$BUILD_TYPE-$abi.apk"
+    ok "Split: $DIST/Limbo-$BUILD_TYPE-$abi.apk ($(du -h "$DIST/Limbo-$BUILD_TYPE-$abi.apk" | cut -f1))"
+  done
+  ok "Universal APK kept alongside the splits"
+elif [[ "$ABI_SPLITS" == "1" ]]; then
+  warn "No native libraries in the package: the DEX is shared by every CPU, so per-ABI APKs would be identical copies. Ship the universal build."
+else
+  log "No native libraries: universal APK is the only meaningful artefact"
+fi
+
 printf '\nInstall with:\n  adb install -r %s\n\n' "$OUT"
