@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Limbo</string>
+    <string name="keyboard_name">Клавиатура Limbo</string>
+    <string name="subtype_en">English</string>
+    <string name="subtype_ru">Русский</string>
+    <string name="subtype_de">Deutsch</string>
+    <string name="subtype_fr">Français</string>
+    <string name="subtype_es">Español</string>
+    <string name="subtype_it">Italiano</string>
+    <string name="subtype_tr">Türkçe</string>
+    <string name="subtype_pl">Polski</string>
+</resources>
