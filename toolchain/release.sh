@@ -25,14 +25,18 @@ VERSION=""
 NOTES_FILE=""
 DRAFT=0
 PUBLISH=1
+BUMP=1
+TARGET=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --version) VERSION="${2:?}"; shift 2 ;;
     --notes) NOTES_FILE="${2:?}"; shift 2 ;;
+    --no-bump) BUMP=0; shift ;;
+    --target) TARGET="${2:?}"; shift 2 ;;
     --draft) DRAFT=1; shift ;;
     --no-publish) PUBLISH=0; shift ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -46,11 +50,16 @@ CURRENT_CODE="$(sed -n 's/.*versionCode = \([0-9]*\).*/\1/p' app/build.gradle.kt
 [[ -n "$CURRENT_NAME" ]] || fail "Could not read versionName from app/build.gradle.kts"
 
 if [[ -z "$VERSION" ]]; then
-  IFS=. read -r major minor patch <<< "$CURRENT_NAME"
-  VERSION="$major.$minor.$((patch + 1))"
+  if [[ "$BUMP" == "1" ]]; then
+    IFS=. read -r major minor patch <<< "$CURRENT_NAME"
+    VERSION="$major.$minor.$((patch + 1))"
+  else
+    VERSION="$CURRENT_NAME"
+  fi
 fi
 NEXT_CODE=$((CURRENT_CODE + 1))
 
+if [[ "$BUMP" == "1" ]]; then
 log "Releasing $CURRENT_NAME ($CURRENT_CODE) -> $VERSION ($NEXT_CODE)"
 
 # ------------------------------------------------------------------ version bump
@@ -70,6 +79,9 @@ text = re.sub(r'VERSION_NAME="[^"]+"', f'VERSION_NAME="{version}"', text, count=
 open(script, "w", encoding="utf-8").write(text)
 print(f"version bumped to {version} ({code})")
 PY
+else
+  log "Releasing $VERSION ($CURRENT_CODE) without bumping"
+fi
 
 # ------------------------------------------------------------------ build
 RELEASE_DIR="$ROOT/dist/release/$VERSION"
@@ -93,6 +105,11 @@ for apk in "${APKS[@]}"; do
   renamed="${base/Limbo-release/Limbo-$VERSION}"
   [[ "$base" == "$renamed" ]] || mv "$apk" "$RELEASE_DIR/$renamed"
 done
+
+# A single file that runs everywhere is labelled as such, so nobody wonders which variant to grab.
+if [[ -f "$RELEASE_DIR/Limbo-$VERSION.apk" ]]; then
+  mv "$RELEASE_DIR/Limbo-$VERSION.apk" "$RELEASE_DIR/Limbo-$VERSION-universal.apk"
+fi
 
 shopt -s nullglob
 FILES=("$RELEASE_DIR"/*.apk)
@@ -128,7 +145,8 @@ command -v gh >/dev/null || fail "gh is not installed; use --no-publish or insta
 TAG="v$VERSION"
 TITLE="Limbo Keyboard $VERSION"
 ARGS=("$TAG" --title "$TITLE" --notes-file "$RELEASE_DIR/NOTES.md")
-[[ "$DRAFT" == "1" ]] && ARGS+=(--draft)
+if [[ -n "$TARGET" ]]; then ARGS+=(--target "$TARGET"); fi
+if [[ "$DRAFT" == "1" ]]; then ARGS+=(--draft); fi
 ARGS+=("${FILES[@]}" "$RELEASE_DIR/SHA256SUMS")
 
 log "Publishing GitHub release $TAG"

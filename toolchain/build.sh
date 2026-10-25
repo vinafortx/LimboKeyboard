@@ -106,7 +106,7 @@ fi
 
 MIN_SDK=26
 TARGET_SDK=34
-VERSION_CODE=1
+VERSION_CODE=2
 VERSION_NAME="1.0.0"
 
 log "Java      $(basename "$JAVA")"
