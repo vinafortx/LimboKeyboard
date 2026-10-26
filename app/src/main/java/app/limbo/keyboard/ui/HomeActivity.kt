@@ -11,6 +11,7 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import app.limbo.keyboard.core.Colors
+import app.limbo.keyboard.core.Crash
 import app.limbo.keyboard.core.Dp
 import app.limbo.keyboard.core.I18n
 import app.limbo.keyboard.core.Type
@@ -39,6 +40,7 @@ class HomeActivity : BaseActivity() {
         buildHero()
         statusCard = buildStatusCard()
         buildTiles()
+        buildRecoveryNote()
         buildFooter()
     }
 
@@ -229,6 +231,57 @@ class HomeActivity : BaseActivity() {
         subtitle.tag = "subtitle"
         card.addView(subtitle)
         return card
+    }
+
+    // ------------------------------------------------------------------ recovery
+
+    /**
+     * Shown once, and only when the previous run ended in a failure. It says what is useful and
+     * nothing more: it happened, here is the report, hide this.
+     */
+    private fun buildRecoveryNote() {
+        val report = Crash.take(this) ?: return
+        Ui.space(this, 14f).also { content.addView(it) }
+
+        val card = Ui.card(this, theme, 16f, 20f)
+        content.addView(card, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+
+        card.addView(Ui.textView(
+            this,
+            I18n.t("Прошлый запуск прервался", "The last launch was interrupted"),
+            Type.BODY, 600, theme.text, tracking = -0.012f
+        ))
+        card.addView(Ui.textView(
+            this,
+            I18n.t(
+                "Если это повторится, отправьте отчёт — он уже собран.",
+                "If it happens again, send us the report — it is already written."
+            ),
+            Type.CALLOUT, 450, Colors.alpha(theme.textSecondary, 0.9f), lineSpacing = 1.3f
+        ).apply { setPadding(0, Dp.dpi(this@HomeActivity, 6f), 0, 0) })
+
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, Dp.dpi(this@HomeActivity, 12f), 0, 0)
+        }
+        val copy = SoftButton(this, theme, I18n.t("Скопировать", "Copy"), SoftButton.Kind.GLASS).apply {
+            compact = true
+            setOnClickListener {
+                val clip = android.content.ClipData.newPlainText("Limbo", report)
+                (getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
+                    ?.setPrimaryClip(clip)
+                Haptics.tap(this, 1)
+                label = I18n.t("Готово", "Copied")
+                contentDescription = label
+            }
+        }
+        val hide = SoftButton(this, theme, I18n.t("Скрыть", "Hide"), SoftButton.Kind.QUIET).apply {
+            compact = true
+            setOnClickListener { card.visibility = View.GONE }
+        }
+        row.addView(copy, LinearLayout.LayoutParams(0, Dp.dpi(this, 40f), 1f).apply { rightMargin = Dp.dpi(this@HomeActivity, 8f) })
+        row.addView(hide, LinearLayout.LayoutParams(0, Dp.dpi(this, 40f), 1f))
+        card.addView(row)
     }
 
     private fun refreshTiles() {

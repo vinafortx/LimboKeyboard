@@ -13,8 +13,10 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import app.limbo.keyboard.LimboApp
 import app.limbo.keyboard.core.Clock
+import app.limbo.keyboard.core.Crash
 import app.limbo.keyboard.core.Colors
 import app.limbo.keyboard.core.Dp
 import app.limbo.keyboard.core.I18n
@@ -76,10 +78,16 @@ class LimboIME : InputMethodService() {
 
     override fun onCreate() {
         super.onCreate()
-        languageIndex = settings.languageCodes.indexOf(settings.activeLanguage).coerceAtLeast(0)
+        Crash.install(this)
+        Crash.guard(this) {
+            languageIndex = settings.languageCodes.indexOf(settings.activeLanguage).coerceAtLeast(0)
+        }
     }
 
-    override fun onCreateInputView(): View {
+    override fun onCreateInputView(): View =
+        Crash.guard(this) { buildInputView() } ?: fallbackInputView()
+
+    private fun buildInputView(): View {
         val theme = settings.theme
         val context = this
 
@@ -124,6 +132,38 @@ class LimboIME : InputMethodService() {
         return frame
     }
 
+    /**
+     * What the user gets when the drawn board cannot be built: the same input, none of the
+     * decoration. Every part of it is a plain view, so there is almost nothing left to fail.
+     */
+    private fun fallbackInputView(): View {
+        val column = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(android.graphics.Color.BLACK)
+        }
+        runCatching {
+            val theme = settings.theme
+            column.setBackgroundColor(theme.panelBottom)
+            column.addView(
+                FallbackBoard(
+                    context = this,
+                    theme = theme,
+                    onText = { text -> runCatching { commitText(text, true) } },
+                    onDelete = { runCatching { delete(false) } },
+                    onEnter = { runCatching { handleAction(Action.ENTER) } }
+                ),
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+            window?.window?.setBackgroundDrawable(
+                android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
+            )
+        }
+        return column
+    }
+
     private val clipListener: (List<ClipboardStore.Entry>) -> Unit = { entries ->
         clipboardPanel?.bind(entries)
         refreshSuggestions()
@@ -131,6 +171,10 @@ class LimboIME : InputMethodService() {
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        Crash.guard(this) { startInputView(info) }
+    }
+
+    private fun startInputView(info: EditorInfo?) {
         val inputType = info?.inputType ?: InputType.TYPE_CLASS_TEXT
         stripEnabled = settings.suggestions && settings.theme.barStyle != app.limbo.keyboard.theme.BarStyle.HIDDEN
         root?.let { frame ->
@@ -157,8 +201,10 @@ class LimboIME : InputMethodService() {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
-        closeSheet()
-        hidePanel(immediate = true)
+        Crash.guard(this) {
+            closeSheet()
+            hidePanel(immediate = true)
+        }
     }
 
     override fun onUpdateSelection(
@@ -178,9 +224,11 @@ class LimboIME : InputMethodService() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        keyboard?.invalidateBoardSafely()
-        applyTheme()
-        root?.requestLayout()
+        Crash.guard(this) {
+            keyboard?.invalidateBoardSafely()
+            applyTheme()
+            root?.requestLayout()
+        }
     }
 
     private fun applyTheme() {
@@ -222,6 +270,10 @@ class LimboIME : InputMethodService() {
     // ------------------------------------------------------------------ events
 
     private fun handleEvent(event: KeyboardEvent) {
+        Crash.guard(this) { dispatchEvent(event) }
+    }
+
+    private fun dispatchEvent(event: KeyboardEvent) {
         when (event) {
             is KeyboardEvent.Commit -> commitText(event.text, event.key != null)
             is KeyboardEvent.Delete -> delete(event.wholeWord)
@@ -340,6 +392,10 @@ class LimboIME : InputMethodService() {
     // ------------------------------------------------------------------ suggestions
 
     private fun refreshSuggestions() {
+        Crash.guard(this) { updateSuggestions() }
+    }
+
+    private fun updateSuggestions() {
         val stripView = strip ?: return
         if (!stripEnabled) return
         val ic = currentInputConnection
@@ -364,6 +420,10 @@ class LimboIME : InputMethodService() {
     }
 
     private fun refreshShift() {
+        Crash.guard(this) { updateShift() }
+    }
+
+    private fun updateShift() {
         val board = keyboard ?: return
         val info = currentInputEditorInfo ?: return
         if (board.capsLock) return

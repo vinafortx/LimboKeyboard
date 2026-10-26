@@ -106,8 +106,8 @@ fi
 
 MIN_SDK=26
 TARGET_SDK=34
-VERSION_CODE=2
-VERSION_NAME="1.0.0"
+VERSION_CODE=3
+VERSION_NAME="1.0.1"
 
 log "Java      $(basename "$JAVA")"
 log "Build tools ${BUILD_TOOLS_DIR##*/}"

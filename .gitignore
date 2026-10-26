@@ -8,6 +8,9 @@ captures/
 .externalNativeBuild/
 .cxx/
 
+# Headless JVM harness output
+tools/jvm-harness/.build/
+
 # Manual toolchain output
 toolchain/.work/
 toolchain/.keys/

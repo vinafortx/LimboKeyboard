@@ -25,7 +25,7 @@
 
 ### [Скачать APK →](https://github.com/vinafortx/LimboKeyboard/releases/latest)
 
-`Limbo-1.0.0-universal.apk` · Android 8.0+ · ~1 МБ
+`Limbo-1.0.1-universal.apk` · Android 8.0+ · ~1 МБ
 
 </td>
 <td width="50%" valign="top" align="center">
@@ -369,7 +369,7 @@ sed 's|<manifest |<manifest package="app.limbo.keyboard" |' \
 aapt2 link -o .work/base.apk -I $ANDROID_HOME/platforms/android-34/android.jar \
   --manifest .work/AndroidManifest.xml -R .work/resources.zip \
   --java .work/gen --min-sdk-version 26 --target-sdk-version 34 \
-  --version-code 1 --version-name 1.0.0
+  --version-code 3 --version-name 1.0.1
 
 # 4. Kotlin
 kotlinc $(find app/src/main/java -name '*.kt') \
