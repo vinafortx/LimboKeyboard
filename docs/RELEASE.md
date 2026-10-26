@@ -77,6 +77,11 @@ building — `.github/workflows/release.yml` does exactly that.
 **Back the keystore up.** Android refuses to update an installed app whose signing key changed, so
 losing the key means users have to uninstall and reinstall.
 
+The key used for the published 1.0.1 build has the certificate `SHA-256`
+`a139df2675efecf9f7edabc2b88475e6148dd9be8909056f53a6ca1486b923b5`. Keep the matching
+`limbo-release.jks` somewhere safe and pass it with `LIMBO_KEYSTORE`; the copy under
+`toolchain/.keys/` is only the local fallback.
+
 ## Manual checks before publishing
 
 ```bash

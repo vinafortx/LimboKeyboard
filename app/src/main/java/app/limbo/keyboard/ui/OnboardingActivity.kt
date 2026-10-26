@@ -7,18 +7,17 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
-import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowInsetsController
 import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import app.limbo.keyboard.core.Clock
+import app.limbo.keyboard.core.Crash
 import app.limbo.keyboard.core.Colors
 import app.limbo.keyboard.core.Dp
 import app.limbo.keyboard.core.I18n
@@ -75,18 +74,20 @@ class OnboardingActivity : android.app.Activity(), ThemeAware {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = Color.TRANSPARENT
-        window.navigationBarColor = Color.TRANSPARENT
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.setDecorFitsSystemWindows(false)
-            window.insetsController?.setSystemBarsAppearance(
-                if (theme.dark) 0 else WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
-                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
-            )
+        runCatching { setupLimboWindow(theme) }
+
+        val shell = Crash.guard(this) {
+            buildShell()
+            true
+        } == true
+        if (!shell) {
+            // Nothing can be drawn; the home screen is a better place to be than a dead window.
+            finish()
+            return
         }
-        buildShell()
-        step = settings.onboardingStep.coerceIn(0, totalSteps - 1)
-        renderStep()
+
+        step = runCatching { settings.onboardingStep }.getOrDefault(0).coerceIn(0, totalSteps - 1)
+        if (Crash.guard(this) { renderStep() } == null && step == 0) finish()
     }
 
     override fun onResume() {

@@ -1,6 +1,7 @@
 package app.limbo.keyboard
 
 import android.app.Application
+import app.limbo.keyboard.core.Crash
 import app.limbo.keyboard.core.Settings
 import app.limbo.keyboard.ime.ClipboardStore
 import app.limbo.keyboard.ime.Dictionary
@@ -18,6 +19,7 @@ class LimboApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        Crash.install(this)
     }
 
     companion object {
